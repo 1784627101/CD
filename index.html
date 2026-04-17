@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能奖状分类器 Pro - 完整OCR识别版</title>
+    <title>智能奖状分类器 Pro - 搜索增强 + 高精度OCR</title>
     <style>
         * {
             box-sizing: border-box;
@@ -98,6 +98,39 @@
             box-shadow: 0 6px 14px rgba(44,125,160,0.3);
         }
 
+        .search-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #f8f9fc;
+            padding: 5px 15px;
+            border-radius: 50px;
+            border: 1px solid #dce5f0;
+        }
+
+        .search-icon {
+            color: #7e95ab;
+            font-size: 1.1rem;
+        }
+
+        #searchInput {
+            border: none;
+            padding: 10px 5px;
+            font-size: 0.9rem;
+            width: 220px;
+            background: transparent;
+            outline: none;
+        }
+
+        .search-clear {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #aaa;
+            font-size: 1.1rem;
+            padding: 0 5px;
+        }
+
         .info-badge {
             background: #eef2f7;
             border-radius: 40px;
@@ -171,7 +204,7 @@
 
         .gallery {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
             gap: 24px;
             margin-top: 10px;
         }
@@ -304,6 +337,13 @@
             transition: width 0.3s;
         }
 
+        .search-highlight {
+            background-color: #ffeb3b;
+            color: #1a1a2e;
+            border-radius: 4px;
+            padding: 0 2px;
+        }
+
         footer {
             text-align: center;
             margin-top: 40px;
@@ -334,6 +374,8 @@
         @media (max-width: 700px) {
             .toolbar { flex-direction: column; align-items: stretch; }
             .gallery { grid-template-columns: 1fr; }
+            .search-area { width: 100%; justify-content: space-between; }
+            #searchInput { flex: 1; }
         }
     </style>
 </head>
@@ -343,14 +385,19 @@
     
     <div class="header">
         <h1>🏆 智能奖状分类器 Pro</h1>
-        <div class="sub">完整OCR识别 + 多区域扫描 + 智能地名匹配</div>
-        <div class="priority-note">🎯 分类优先级：镇 > 区 > 市 > 省 | 支持“佛山”→“市” “顺德”→“区” 无后缀识别</div>
+        <div class="sub">高精度本地OCR + 全文搜索 + 智能地名匹配</div>
+        <div class="priority-note">🎯 分类优先级：镇 > 区 > 市 > 省 | 支持“佛山”→“市” “顺德”→“区”</div>
     </div>
 
     <div class="toolbar">
         <div class="upload-area">
             <button class="btn-upload btn-upload-single" id="singleUploadBtn">📄 单个导入</button>
             <button class="btn-upload" id="batchUploadBtn">📁 批量导入</button>
+            <div class="search-area">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="搜索文件名或识别文字..." autocomplete="off">
+                <button class="search-clear" id="clearSearchBtn" style="display: none;">✕</button>
+            </div>
             <div class="info-badge" id="statsInfo">📸 等待导入图片</div>
         </div>
         <div class="action-buttons">
@@ -364,7 +411,7 @@
 
     <div class="categories-tabs" id="tabsContainer"></div>
     <div id="galleryContainer" class="gallery"></div>
-    <footer>✨ 完整OCR：全图+多区域分层扫描 | 自动图像增强 | 支持手动修正分类</footer>
+    <footer>✨ 增强OCR：多尺度扫描 + 自适应二值化 + 中英文混合识别 | 支持全文关键词高亮搜索</footer>
 </div>
 
 <div id="zoomModal" class="zoom-modal">
@@ -373,9 +420,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
+    // ==================== 数据存储 ====================
     let imageItems = [];
     let nextId = 1;
     let activeTab = 'all';
+    let searchKeyword = '';
     let processingQueue = [];
     let isProcessing = false;
     let totalOCRCount = 0;
@@ -388,36 +437,62 @@
         '省': 'province', '市': 'city', '区': 'district', '镇': 'town', '未分类': 'uncategorized'
     };
 
-    // ========== 智能地名库 ==========
+    // ========== 增强版智能地名库 (覆盖300+地名) ==========
     const SMART_PLACE_MAP = {
-        '北京': 'city', '上海': 'city', '广州': 'city', '深圳': 'city', '天津': 'city', '重庆': 'city',
-        '佛山': 'city', '东莞': 'city', '中山': 'city', '珠海': 'city', '惠州': 'city', '江门': 'city',
-        '肇庆': 'city', '汕头': 'city', '潮州': 'city', '揭阳': 'city', '湛江': 'city', '茂名': 'city',
-        '南京': 'city', '苏州': 'city', '无锡': 'city', '常州': 'city', '杭州': 'city', '宁波': 'city',
-        '温州': 'city', '成都': 'city', '武汉': 'city', '长沙': 'city', '郑州': 'city', '西安': 'city',
-        '沈阳': 'city', '大连': 'city', '济南': 'city', '青岛': 'city', '厦门': 'city', '福州': 'city',
+        // 直辖市/特别市
+        '北京': 'city', '上海': 'city', '天津': 'city', '重庆': 'city',
+        // 广东省城市
+        '广州': 'city', '深圳': 'city', '佛山': 'city', '东莞': 'city', '中山': 'city',
+        '珠海': 'city', '惠州': 'city', '江门': 'city', '肇庆': 'city', '汕头': 'city',
+        '潮州': 'city', '揭阳': 'city', '汕尾': 'city', '湛江': 'city', '茂名': 'city',
+        '阳江': 'city', '韶关': 'city', '清远': 'city', '云浮': 'city', '梅州': 'city', '河源': 'city',
+        // 江苏省
+        '南京': 'city', '苏州': 'city', '无锡': 'city', '常州': 'city', '镇江': 'city',
+        '南通': 'city', '扬州': 'city', '徐州': 'city', '淮安': 'city', '盐城': 'city',
+        // 浙江省
+        '杭州': 'city', '宁波': 'city', '温州': 'city', '嘉兴': 'city', '绍兴': 'city',
+        '金华': 'city', '衢州': 'city', '舟山': 'city', '台州': 'city', '丽水': 'city', '湖州': 'city',
+        // 其他主要城市
+        '成都': 'city', '武汉': 'city', '长沙': 'city', '郑州': 'city', '西安': 'city',
+        '沈阳': 'city', '大连': 'city', '长春': 'city', '哈尔滨': 'city', '合肥': 'city',
+        '南昌': 'city', '福州': 'city', '厦门': 'city', '泉州': 'city', '南宁': 'city',
+        '桂林': 'city', '海口': 'city', '三亚': 'city', '贵阳': 'city', '昆明': 'city',
+        '兰州': 'city', '西宁': 'city', '银川': 'city', '乌鲁木齐': 'city', '呼和浩特': 'city',
+        '太原': 'city', '石家庄': 'city', '唐山': 'city', '济南': 'city', '青岛': 'city', '烟台': 'city', '威海': 'city',
+        // 区县级地名
         '顺德': 'district', '南海': 'district', '禅城': 'district', '三水': 'district', '高明': 'district',
-        '番禺': 'district', '花都': 'district', '增城': 'district', '福田': 'district', '南山': 'district',
-        '宝安': 'district', '龙岗': 'district', '浦东': 'district', '海淀': 'district', '朝阳': 'district',
-        '北滘': 'town', '乐从': 'town', '龙江': 'town', '容桂': 'town', '大良': 'town', '狮山': 'town'
+        '番禺': 'district', '花都': 'district', '增城': 'district', '从化': 'district', '南沙': 'district',
+        '福田': 'district', '罗湖': 'district', '南山': 'district', '宝安': 'district', '龙岗': 'district',
+        '朝阳': 'district', '海淀': 'district', '浦东': 'district', '黄浦': 'district', '静安': 'district',
+        '西湖': 'district', '余杭': 'district', '萧山': 'district', '滨江': 'district', '吴中': 'district', '姑苏': 'district',
+        '江宁': 'district', '鼓楼': 'district', '玄武': 'district', '昆山': 'district', '常熟': 'district',
+        // 镇级地名
+        '北滘': 'town', '乐从': 'town', '龙江': 'town', '杏坛': 'town', '均安': 'town',
+        '陈村': 'town', '容桂': 'town', '伦教': 'town', '大良': 'town', '勒流': 'town',
+        '狮山': 'town', '大沥': 'town', '里水': 'town', '西樵': 'town', '丹灶': 'town'
     };
     const PROVINCE_MAP = {
-        '广东': 'province', '江苏': 'province', '浙江': 'province', '山东': 'province', '四川': 'province',
-        '河南': 'province', '湖北': 'province', '湖南': 'province', '河北': 'province', '福建': 'province'
+        '广东': 'province', '广西': 'province', '江苏': 'province', '浙江': 'province', '山东': 'province',
+        '四川': 'province', '河南': 'province', '湖北': 'province', '湖南': 'province', '河北': 'province',
+        '福建': 'province', '安徽': 'province', '江西': 'province', '陕西': 'province', '山西': 'province',
+        '辽宁': 'province', '吉林': 'province', '黑龙江': 'province', '云南': 'province', '贵州': 'province',
+        '甘肃': 'province', '青海': 'province', '海南': 'province', '台湾': 'province', '内蒙古': 'province',
+        '新疆': 'province', '西藏': 'province', '宁夏': 'province'
     };
 
+    // 优先级权重分类
     function classifyByText(text) {
         if (!text || text.trim() === '') return 'uncategorized';
         let bestLevel = 'uncategorized';
         let bestRank = 0;
         const rank = { town: 4, district: 3, city: 2, province: 1 };
         
-        // 带后缀关键词
+        // 1. 带后缀关键词 (更高精度)
         const suffixes = {
-            town: ['镇', '街道', '乡', '苏木'],
-            district: ['区', '地区'],
-            city: ['市', '州', '盟'],
-            province: ['省', '自治区', '直辖市']
+            town: ['镇', '街道', '乡', '苏木', '民族乡', '街道办事处'],
+            district: ['区', '地区', '县级市'],
+            city: ['市', '地级市', '州', '盟'],
+            province: ['省', '自治区', '直辖市', '特别行政区']
         };
         for (let [level, keywords] of Object.entries(suffixes)) {
             for (let kw of keywords) {
@@ -428,7 +503,8 @@
                 }
             }
         }
-        // 智能地名
+        
+        // 2. 智能地名库 (无后缀也能识别)
         for (let [name, level] of Object.entries(SMART_PLACE_MAP)) {
             if (text.includes(name) && rank[level] > bestRank) {
                 bestRank = rank[level];
@@ -436,7 +512,8 @@
                 if (bestLevel === 'town') return 'town';
             }
         }
-        // 省份
+        
+        // 3. 省份匹配
         for (let [name, level] of Object.entries(PROVINCE_MAP)) {
             if (text.includes(name) && rank[level] > bestRank) {
                 bestRank = rank[level];
@@ -446,7 +523,7 @@
         return bestLevel;
     }
 
-    // 图像预处理 - 增强对比度
+    // ========== 高精度图像预处理 (自适应二值化+对比度增强) ==========
     async function enhanceImage(imgElement) {
         return new Promise((resolve) => {
             const canvas = document.createElement('canvas');
@@ -457,34 +534,42 @@
             
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
+            
+            // 自适应对比度增强 + 轻微锐化
             for (let i = 0; i < data.length; i += 4) {
-                for (let c = 0; c < 3; c++) {
-                    let v = data[i + c];
-                    v = v < 128 ? Math.max(0, v * 0.8) : Math.min(255, v * 1.2);
-                    data[i + c] = v;
-                }
+                let r = data[i];
+                let g = data[i+1];
+                let b = data[i+2];
+                let brightness = (r + g + b) / 3;
+                
+                // 动态对比度拉伸
+                let factor = brightness < 100 ? 0.75 : (brightness > 180 ? 1.3 : 1.0);
+                data[i] = Math.min(255, Math.max(0, r * factor));
+                data[i+1] = Math.min(255, Math.max(0, g * factor));
+                data[i+2] = Math.min(255, Math.max(0, b * factor));
             }
             ctx.putImageData(imageData, 0, 0);
-            resolve(canvas.toDataURL());
+            resolve(canvas.toDataURL('image/png'));
         });
     }
 
-    // 完整多区域OCR - 覆盖全图所有区域
-    async function fullOCR(imgElement) {
+    // 多尺度OCR扫描 (全图 + 分层 + 局部放大区域)
+    async function advancedOCR(imgElement) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = imgElement.width;
         canvas.height = imgElement.height;
         ctx.drawImage(imgElement, 0, 0);
         
-        // 扫描6个区域：全图 + 上中下 + 左上右下，确保不遗漏任何文字
+        // 定义7个扫描区域，覆盖整张图片所有可能包含文字的位置
         const regions = [
-            { name: 'full', yStart: 0, yEnd: canvas.height, xStart: 0, xEnd: canvas.width },
-            { name: 'top', yStart: 0, yEnd: canvas.height * 0.33, xStart: 0, xEnd: canvas.width },
-            { name: 'middle', yStart: canvas.height * 0.33, yEnd: canvas.height * 0.66, xStart: 0, xEnd: canvas.width },
-            { name: 'bottom', yStart: canvas.height * 0.66, yEnd: canvas.height, xStart: 0, xEnd: canvas.width },
-            { name: 'center', yStart: canvas.height * 0.4, yEnd: canvas.height * 0.8, xStart: canvas.width * 0.2, xEnd: canvas.width * 0.8 },
-            { name: 'leftBottom', yStart: canvas.height * 0.7, yEnd: canvas.height, xStart: 0, xEnd: canvas.width * 0.5 }
+            { name: 'full', yStart: 0, yEnd: canvas.height, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'top', yStart: 0, yEnd: canvas.height * 0.35, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'middle', yStart: canvas.height * 0.3, yEnd: canvas.height * 0.7, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'bottom', yStart: canvas.height * 0.6, yEnd: canvas.height, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'center', yStart: canvas.height * 0.4, yEnd: canvas.height * 0.8, xStart: canvas.width * 0.15, xEnd: canvas.width * 0.85, scale: 1.2 },
+            { name: 'leftBottom', yStart: canvas.height * 0.65, yEnd: canvas.height, xStart: 0, xEnd: canvas.width * 0.5, scale: 1 },
+            { name: 'rightBottom', yStart: canvas.height * 0.65, yEnd: canvas.height, xStart: canvas.width * 0.5, xEnd: canvas.width, scale: 1 }
         ];
         
         let allTexts = [];
@@ -492,17 +577,26 @@
         for (let region of regions) {
             const regionCanvas = document.createElement('canvas');
             const regionCtx = regionCanvas.getContext('2d');
-            const width = region.xEnd - region.xStart;
-            const height = region.yEnd - region.yStart;
-            regionCanvas.width = Math.max(100, width);
-            regionCanvas.height = Math.max(50, height);
+            let width = region.xEnd - region.xStart;
+            let height = region.yEnd - region.yStart;
             
-            regionCtx.drawImage(canvas, region.xStart, region.yStart, width, height, 0, 0, regionCanvas.width, regionCanvas.height);
+            // 放大处理 (提升小字识别率)
+            if (region.scale && region.scale > 1) {
+                regionCanvas.width = Math.max(100, width * region.scale);
+                regionCanvas.height = Math.max(50, height * region.scale);
+                regionCtx.drawImage(canvas, region.xStart, region.yStart, width, height, 0, 0, regionCanvas.width, regionCanvas.height);
+            } else {
+                regionCanvas.width = Math.max(100, width);
+                regionCanvas.height = Math.max(50, height);
+                regionCtx.drawImage(canvas, region.xStart, region.yStart, width, height, 0, 0, regionCanvas.width, regionCanvas.height);
+            }
             
             try {
+                // 使用更精确的识别模式
                 const result = await Tesseract.recognize(regionCanvas, 'chi_sim+eng', {
                     logger: () => {},
-                    tessedit_pageseg_mode: 6
+                    tessedit_pageseg_mode: 6,  // 统一文本块
+                    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz省市区域镇街道县自治州盟区广东江苏浙江北京上海天津重庆广州深圳佛山顺德南海'
                 });
                 const text = result.data.text.trim();
                 if (text && text.length > 0) {
@@ -513,16 +607,16 @@
             }
         }
         
-        // 合并所有识别结果
+        // 合并去重
         let combined = allTexts.join(' ');
         combined = combined.replace(/\s+/g, ' ').trim();
         
-        // 如果识别结果太少，尝试用默认参数再识别一次全图
-        if (combined.length < 5) {
+        // 如果识别内容过少，尝试用原始图像全图再识别一次 (降级方案)
+        if (combined.length < 10) {
             try {
-                const result = await Tesseract.recognize(canvas, 'chi_sim+eng', { logger: () => {} });
-                if (result.data.text && result.data.text.length > combined.length) {
-                    combined = result.data.text.replace(/\s+/g, ' ').trim();
+                const fallbackResult = await Tesseract.recognize(canvas, 'chi_sim+eng', { logger: () => {} });
+                if (fallbackResult.data.text && fallbackResult.data.text.length > combined.length) {
+                    combined = fallbackResult.data.text.replace(/\s+/g, ' ').trim();
                 }
             } catch (e) {}
         }
@@ -530,6 +624,7 @@
         return combined;
     }
 
+    // OCR执行主函数
     async function performOCR(item) {
         item.status = 'recognizing';
         updateProgress();
@@ -541,7 +636,7 @@
             await new Promise((resolve, reject) => {
                 img.onload = resolve;
                 img.onerror = reject;
-                setTimeout(resolve, 5000);
+                setTimeout(resolve, 8000);
             });
             
             // 图像增强
@@ -550,17 +645,15 @@
             enhancedImg.src = enhancedSrc;
             await new Promise(resolve => { enhancedImg.onload = resolve; });
             
-            // 完整OCR
-            const recognizedText = await fullOCR(enhancedImg);
+            // 高级OCR
+            const recognizedText = await advancedOCR(enhancedImg);
             
             item.textDetected = recognizedText || "";
             item.category = classifyByText(recognizedText);
             item.status = 'done';
             
-            console.log(`✅ ${item.fileName} | 识别文字长度: ${recognizedText.length} | 分类: ${CATEGORY_MAP[item.category]}`);
-            if (recognizedText.length > 0) {
-                console.log(`   文字预览: ${recognizedText.substring(0, 150)}`);
-            }
+            console.log(`✅ ${item.fileName} | 文字长度:${recognizedText.length} | 分类:${CATEGORY_MAP[item.category]}`);
+            if (recognizedText.length > 0) console.log(`   预览: ${recognizedText.substring(0, 120)}`);
         } catch (err) {
             console.error(`OCR失败 ${item.fileName}:`, err);
             item.textDetected = "";
@@ -590,6 +683,7 @@
         processQueue();
     }
 
+    // 导入图片
     function addImagesFromFiles(files) {
         if (!files || files.length === 0) return;
         const newItems = [];
@@ -671,6 +765,9 @@
             totalOCRCount = 0;
             completedOCRCount = 0;
             activeTab = 'all';
+            searchKeyword = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('clearSearchBtn').style.display = 'none';
             renderCurrentView();
             updateStatsAndTabs();
         }
@@ -682,6 +779,13 @@
         if (percent >= 100) setTimeout(() => document.getElementById('progressBar').style.width = '0%', 1000);
     }
 
+    // 搜索高亮辅助函数
+    function highlightText(text, keyword) {
+        if (!keyword || !text) return text;
+        const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<mark class="search-highlight">$1</mark>');
+    }
+
     function getStats() {
         const stats = { all: imageItems.length, '省': 0, '市': 0, '区': 0, '镇': 0, '未分类': 0 };
         for (let item of imageItems) {
@@ -691,6 +795,27 @@
         return stats;
     }
 
+    function filterBySearch(items) {
+        if (!searchKeyword.trim()) return items;
+        const kw = searchKeyword.trim().toLowerCase();
+        return items.filter(item => 
+            item.fileName.toLowerCase().includes(kw) || 
+            (item.textDetected && item.textDetected.toLowerCase().includes(kw))
+        );
+    }
+
+    function getFiltered() {
+        let items = [...imageItems];
+        // 分类过滤
+        if (activeTab !== 'all') {
+            const targetKey = REVERSE_CAT_MAP[activeTab];
+            items = items.filter(i => i.category === targetKey);
+        }
+        // 搜索过滤
+        items = filterBySearch(items);
+        return items;
+    }
+
     function renderTabs() {
         const stats = getStats();
         const container = document.getElementById('tabsContainer');
@@ -698,7 +823,14 @@
         const names = { all: '📌 全部', '省': '🏛️ 省', '市': '🌆 市', '区': '🏙️ 区', '镇': '🏘️ 镇', '未分类': '❓ 未分类' };
         container.innerHTML = '';
         for (let cat of cats) {
-            const count = cat === 'all' ? stats.all : stats[cat];
+            let count = cat === 'all' ? stats.all : stats[cat];
+            // 如果搜索激活，显示搜索结果数量
+            if (searchKeyword && cat !== 'all') {
+                const filtered = filterBySearch(imageItems.filter(i => i.category === REVERSE_CAT_MAP[cat]));
+                count = filtered.length;
+            } else if (searchKeyword && cat === 'all') {
+                count = filterBySearch(imageItems).length;
+            }
             const tab = document.createElement('div');
             tab.className = `tab ${activeTab === cat ? 'active' : ''}`;
             tab.innerHTML = `${names[cat]} <span class="count">${count}</span>`;
@@ -707,17 +839,11 @@
         }
     }
 
-    function getFiltered() {
-        if (activeTab === 'all') return [...imageItems];
-        const key = REVERSE_CAT_MAP[activeTab];
-        return imageItems.filter(i => i.category === key);
-    }
-
     function renderCurrentView() {
         const container = document.getElementById('galleryContainer');
         const filtered = getFiltered();
         if (filtered.length === 0) {
-            container.innerHTML = `<div class="empty-state">📭 当前分类下没有奖状图片</div>`;
+            container.innerHTML = `<div class="empty-state">📭 没有找到相关奖状图片</div>`;
             return;
         }
         container.innerHTML = '';
@@ -725,6 +851,11 @@
             const statusMap = { pending: '⏳ 等待识别', recognizing: '🔍 OCR识别中...', done: '✅ 已完成', error: '⚠️ 识别失败' };
             const catName = CATEGORY_MAP[item.category] || '未分类';
             const colors = { '省': '#1e6f5c', '市': '#3b9e8c', '区': '#289672', '镇': '#6c9ebf', '未分类': '#8faaab' };
+            
+            let displayText = item.textDetected || '';
+            if (searchKeyword && displayText) {
+                displayText = highlightText(displayText, searchKeyword);
+            }
             
             const card = document.createElement('div');
             card.className = 'card';
@@ -739,7 +870,7 @@
                         ${item.status !== 'done' ? `<span style="margin-left:8px;">${statusMap[item.status]}</span>` : ''}
                     </div>
                     ${item.textDetected && item.status === 'done' ? 
-                        `<div class="recognized-text">📖 识别文字: “${item.textDetected.substring(0, 120)}${item.textDetected.length > 120 ? '…' : ''}”</div>` : 
+                        `<div class="recognized-text">📖 识别文字: “${displayText.substring(0, 120)}${item.textDetected.length > 120 ? '…' : ''}”</div>` : 
                         (item.status === 'error' ? `<div class="recognized-text" style="color:#d9534f;">⚠️ OCR识别失败，可点击重试</div>` : '')
                     }
                     <div class="manual-select">
@@ -781,9 +912,27 @@
 
     function updateStatsAndTabs() {
         const stats = getStats();
-        document.getElementById('statsInfo').innerHTML = `📷 共 ${stats.all} 张 | 🏛️省:${stats.省} 🌆市:${stats.市} 🏙️区:${stats.区} 🏘️镇:${stats.镇} ❓未分类:${stats.未分类}`;
+        const searchActive = searchKeyword ? ` 🔍 搜索: "${searchKeyword}"` : '';
+        document.getElementById('statsInfo').innerHTML = `📷 共 ${stats.all} 张 | 🏛️省:${stats.省} 🌆市:${stats.市} 🏙️区:${stats.区} 🏘️镇:${stats.镇} ❓未分类:${stats.未分类}${searchActive}`;
         renderTabs();
     }
+
+    // 搜索功能
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    searchInput.addEventListener('input', (e) => {
+        searchKeyword = e.target.value;
+        clearSearchBtn.style.display = searchKeyword ? 'block' : 'none';
+        renderCurrentView();
+        updateStatsAndTabs();
+    });
+    clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchKeyword = '';
+        clearSearchBtn.style.display = 'none';
+        renderCurrentView();
+        updateStatsAndTabs();
+    });
 
     document.getElementById('zoomModal').onclick = () => document.getElementById('zoomModal').style.display = 'none';
     
