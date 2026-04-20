@@ -411,7 +411,7 @@
 
     <div class="categories-tabs" id="tabsContainer"></div>
     <div id="galleryContainer" class="gallery"></div>
-    <footer>✨ 增强OCR：多尺度9区域扫描 + Otsu自适应二值化 + 降噪处理 + LSTM引擎 | 500+地名智能匹配 | 置信度评估</footer>
+    <footer>✨ 增强OCR：多尺度9区域扫描 + 彩色智能增强 + 轻度降噪 + LSTM引擎 | 500+地名智能匹配 | 置信度评估</footer>
 </div>
 
 <div id="zoomModal" class="zoom-modal">
@@ -693,7 +693,7 @@
         return best.level;
     }
 
-    // ========== 高精度图像预处理 (灰度化+自适应二值化+降噪+对比度增强) ==========
+    // ========== 高精度图像预处理 (保留彩色 + 智能对比度增强 + 轻度降噪) ==========
     async function enhanceImage(imgElement) {
         return new Promise((resolve) => {
             const canvas = document.createElement('canvas');
@@ -701,119 +701,75 @@
             canvas.width = imgElement.width;
             canvas.height = imgElement.height;
             ctx.drawImage(imgElement, 0, 0);
-            
+
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
-            
-            // 1. 灰度化 (加权平均法，更符合人眼感知)
+
+            // 1. 智能对比度增强 (保留彩色信息，避免花纹误识别)
             for (let i = 0; i < data.length; i += 4) {
-                const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-                data[i] = data[i+1] = data[i+2] = gray;
-            }
-            
-            // 2. 自适应二值化 (Otsu算法 + 局部阈值)
-            const grayData = new Uint8Array(data.length / 4);
-            for (let i = 0; i < grayData.length; i++) {
-                grayData[i] = data[i * 4];
-            }
-            
-            // 计算全局Otsu阈值
-            let threshold = calculateOtsuThreshold(grayData);
-            
-            // 应用局部自适应阈值 (9x9窗口)
-            const windowSize = 9;
-            const halfWindow = Math.floor(windowSize / 2);
-            const localThresholds = new Uint8Array(grayData.length);
-            
-            for (let y = 0; y < canvas.height; y++) {
-                for (let x = 0; x < canvas.width; x++) {
-                    const idx = y * canvas.width + x;
-                    let sum = 0, count = 0;
-                    
-                    // 计算局部窗口均值
-                    for (let wy = Math.max(0, y - halfWindow); wy <= Math.min(canvas.height - 1, y + halfWindow); wy++) {
-                        for (let wx = Math.max(0, x - halfWindow); wx <= Math.min(canvas.width - 1, x + halfWindow); wx++) {
-                            sum += grayData[wy * canvas.width + wx];
-                            count++;
-                        }
-                    }
-                    
-                    const localMean = sum / count;
-                    localThresholds[idx] = Math.max(0, Math.min(255, localMean - 10)); // 稍微调低阈值
+                let r = data[i];
+                let g = data[i+1];
+                let b = data[i+2];
+
+                // 计算亮度
+                let brightness = (r + g + b) / 3;
+
+                // 自适应对比度增强 (基于亮度动态调整)
+                let factor;
+                if (brightness < 80) {
+                    // 暗部增强
+                    factor = 1.3;
+                } else if (brightness > 200) {
+                    // 亮部稍微压暗
+                    factor = 0.95;
+                } else {
+                    // 中间调适当增强
+                    factor = 1.05;
                 }
+
+                // 分别处理RGB通道，保持彩色信息
+                data[i] = Math.min(255, Math.max(0, r * factor));
+                data[i+1] = Math.min(255, Math.max(0, g * factor));
+                data[i+2] = Math.min(255, Math.max(0, b * factor));
             }
-            
-            // 应用二值化
-            for (let i = 0; i < data.length; i += 4) {
-                const gray = data[i];
-                const threshold = localThresholds[i / 4];
-                const binary = gray > threshold ? 255 : 0;
-                data[i] = data[i+1] = data[i+2] = binary;
-            }
-            
-            // 3. 降噪 (中值滤波)
+
+            // 2. 轻度降噪 (只处理明显噪点，避免过度模糊文字)
             const tempData = new Uint8Array(data);
             for (let y = 1; y < canvas.height - 1; y++) {
                 for (let x = 1; x < canvas.width - 1; x++) {
+                    // 只对明显噪点进行处理
+                    const idx = (y * canvas.width + x) * 4;
                     const neighbors = [];
+
+                    // 收集周围像素的亮度
                     for (let dy = -1; dy <= 1; dy++) {
                         for (let dx = -1; dx <= 1; dx++) {
-                            const idx = ((y + dy) * canvas.width + (x + dx)) * 4;
-                            neighbors.push(tempData[idx]);
+                            if (dx === 0 && dy === 0) continue;
+                            const nIdx = ((y + dy) * canvas.width + (x + dx)) * 4;
+                            const nBrightness = (tempData[nIdx] + tempData[nIdx+1] + tempData[nIdx+2]) / 3;
+                            neighbors.push(nBrightness);
                         }
                     }
-                    neighbors.sort((a, b) => a - b);
-                    const median = neighbors[4]; // 中值
-                    
-                    const idx = (y * canvas.width + x) * 4;
-                    data[idx] = data[idx+1] = data[idx+2] = median;
+
+                    const currentBrightness = (tempData[idx] + tempData[idx+1] + tempData[idx+2]) / 3;
+                    const avgBrightness = neighbors.reduce((a, b) => a + b) / neighbors.length;
+
+                    // 如果当前像素与周围差异太大，认为是噪点
+                    if (Math.abs(currentBrightness - avgBrightness) > 60) {
+                        // 用周围平均值替换，但保持一定彩色信息
+                        const factor = 0.7; // 部分保留原色
+                        data[idx] = Math.round(data[idx] * factor + avgBrightness * (1 - factor));
+                        data[idx+1] = Math.round(data[idx+1] * factor + avgBrightness * (1 - factor));
+                        data[idx+2] = Math.round(data[idx+2] * factor + avgBrightness * (1 - factor));
+                    }
                 }
             }
-            
+
             ctx.putImageData(imageData, 0, 0);
             resolve(canvas.toDataURL('image/png'));
         });
     }
     
-    // Otsu阈值计算
-    function calculateOtsuThreshold(data) {
-        const hist = new Array(256).fill(0);
-        for (let i = 0; i < data.length; i++) {
-            hist[data[i]]++;
-        }
-        
-        let total = data.length;
-        let sum = 0;
-        for (let i = 0; i < 256; i++) {
-            sum += i * hist[i];
-        }
-        
-        let sumB = 0;
-        let wB = 0;
-        let wF = 0;
-        let maxVariance = 0;
-        let threshold = 0;
-        
-        for (let i = 0; i < 256; i++) {
-            wB += hist[i];
-            if (wB === 0) continue;
-            wF = total - wB;
-            if (wF === 0) break;
-            
-            sumB += i * hist[i];
-            let mB = sumB / wB;
-            let mF = (sum - sumB) / wF;
-            
-            let variance = wB * wF * (mB - mF) * (mB - mF);
-            if (variance > maxVariance) {
-                maxVariance = variance;
-                threshold = i;
-            }
-        }
-        
-        return threshold;
-    }
-
     // 多尺度OCR扫描 (全图 + 9个分层区域 + 局部放大 + 旋转校正)
     async function advancedOCR(imgElement) {
         const canvas = document.createElement('canvas');
@@ -857,14 +813,13 @@
             }
             
             try {
-                // 使用更精确的识别模式和参数
+                // 使用适合彩色图像的识别参数
                 const result = await Tesseract.recognize(regionCanvas, 'chi_sim+eng', {
                     logger: () => {},
-                    tessedit_pageseg_mode: 6,  // 统一文本块
+                    tessedit_pageseg_mode: 3,  // 自动页面分割，更适合彩色图像
                     tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz省市区域镇街道县自治州盟区广东江苏浙江北京上海天津重庆广州深圳佛山顺德南海禅城三水高明增城从化花都番禺南沙黄埔天河越秀海珠荔湾白云东莞中山珠海惠州江门肇庆汕头潮州揭阳汕尾湛江茂名阳江韶关清远云浮梅州河源肇庆四会高要封开广宁怀集德庆',
                     tessedit_ocr_engine_mode: 2,  // 使用Tesseract + LSTM引擎
                     tessedit_enable_bigram_correction: 1,  // 启用双字母修正
-                    textord_heavy_nr: 1,  // 更激进的降噪
                     classify_enable_learning: 1  // 启用学习模式
                 });
                 
