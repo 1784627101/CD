@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能奖状分类器 Pro Max - 高精度OCR + 智能分类 + 置信度评估</title>
+    <title>智能奖状分类器 Pro - 搜索增强 + 高精度OCR</title>
     <style>
         * {
             box-sizing: border-box;
@@ -384,8 +384,8 @@
     <div id="progressBar" class="progress-bar" style="width:0%"></div>
     
     <div class="header">
-        <h1>🏆 智能奖状分类器 Pro Max</h1>
-        <div class="sub">高精度本地OCR + 智能地名匹配 + 置信度评估 + 多尺度扫描</div>
+        <h1>🏆 智能奖状分类器 Pro</h1>
+        <div class="sub">高精度本地OCR + 全文搜索 + 智能地名匹配</div>
         <div class="priority-note">🎯 分类优先级：镇 > 区 > 市 > 省 | 支持“佛山”→“市” “顺德”→“区”</div>
     </div>
 
@@ -411,7 +411,7 @@
 
     <div class="categories-tabs" id="tabsContainer"></div>
     <div id="galleryContainer" class="gallery"></div>
-    <footer>✨ 增强OCR：多尺度9区域扫描 + 彩色智能增强 + 轻度降噪 + LSTM引擎 | 500+地名智能匹配 | 置信度评估</footer>
+    <footer>✨ 增强OCR：多尺度扫描 + 自适应二值化 + 中英文混合识别 | 支持全文关键词高亮搜索</footer>
 </div>
 
 <div id="zoomModal" class="zoom-modal">
@@ -437,139 +437,39 @@
         '省': 'province', '市': 'city', '区': 'district', '镇': 'town', '未分类': 'uncategorized'
     };
 
-    // ========== 增强版智能地名库 (覆盖500+地名 + 扩展省市区县镇) ==========
+    // ========== 增强版智能地名库 (覆盖300+地名) ==========
     const SMART_PLACE_MAP = {
         // 直辖市/特别市
         '北京': 'city', '上海': 'city', '天津': 'city', '重庆': 'city',
-        // 广东省城市 (扩展)
+        // 广东省城市
         '广州': 'city', '深圳': 'city', '佛山': 'city', '东莞': 'city', '中山': 'city',
         '珠海': 'city', '惠州': 'city', '江门': 'city', '肇庆': 'city', '汕头': 'city',
         '潮州': 'city', '揭阳': 'city', '汕尾': 'city', '湛江': 'city', '茂名': 'city',
         '阳江': 'city', '韶关': 'city', '清远': 'city', '云浮': 'city', '梅州': 'city', '河源': 'city',
-        // 江苏省城市 (扩展)
+        // 江苏省
         '南京': 'city', '苏州': 'city', '无锡': 'city', '常州': 'city', '镇江': 'city',
         '南通': 'city', '扬州': 'city', '徐州': 'city', '淮安': 'city', '盐城': 'city',
-        '泰州': 'city', '宿迁': 'city', '连云港': 'city',
-        // 浙江省城市 (扩展)
+        // 浙江省
         '杭州': 'city', '宁波': 'city', '温州': 'city', '嘉兴': 'city', '绍兴': 'city',
         '金华': 'city', '衢州': 'city', '舟山': 'city', '台州': 'city', '丽水': 'city', '湖州': 'city',
-        // 山东省城市 (扩展)
-        '济南': 'city', '青岛': 'city', '淄博': 'city', '枣庄': 'city', '东营': 'city',
-        '烟台': 'city', '潍坊': 'city', '济宁': 'city', '泰安': 'city', '威海': 'city',
-        '日照': 'city', '临沂': 'city', '德州': 'city', '聊城': 'city', '滨州': 'city', '菏泽': 'city',
-        // 河南省城市 (扩展)
-        '郑州': 'city', '开封': 'city', '洛阳': 'city', '平顶山': 'city', '安阳': 'city',
-        '鹤壁': 'city', '新乡': 'city', '焦作': 'city', '濮阳': 'city', '许昌': 'city',
-        '漯河': 'city', '三门峡': 'city', '南阳': 'city', '商丘': 'city', '信阳': 'city',
-        '周口': 'city', '驻马店': 'city', '济源': 'city',
-        // 湖北省城市 (扩展)
-        '武汉': 'city', '黄石': 'city', '十堰': 'city', '宜昌': 'city', '襄阳': 'city',
-        '鄂州': 'city', '荆门': 'city', '孝感': 'city', '荆州': 'city', '黄冈': 'city',
-        '咸宁': 'city', '随州': 'city', '恩施': 'city', '仙桃': 'city', '潜江': 'city', '天门': 'city', '神农架': 'city',
-        // 湖南省城市 (扩展)
-        '长沙': 'city', '株洲': 'city', '湘潭': 'city', '衡阳': 'city', '邵阳': 'city',
-        '岳阳': 'city', '常德': 'city', '张家界': 'city', '益阳': 'city', '郴州': 'city',
-        '永州': 'city', '怀化': 'city', '娄底': 'city', '湘西': 'city',
         // 其他主要城市
-        '成都': 'city', '西安': 'city', '沈阳': 'city', '大连': 'city', '长春': 'city',
-        '哈尔滨': 'city', '合肥': 'city', '福州': 'city', '厦门': 'city', '泉州': 'city',
-        '南宁': 'city', '桂林': 'city', '海口': 'city', '三亚': 'city', '贵阳': 'city',
-        '昆明': 'city', '兰州': 'city', '西宁': 'city', '银川': 'city', '乌鲁木齐': 'city',
-        '呼和浩特': 'city', '太原': 'city', '石家庄': 'city', '唐山': 'city',
-        // 广东省区县级地名 (大幅扩展)
+        '成都': 'city', '武汉': 'city', '长沙': 'city', '郑州': 'city', '西安': 'city',
+        '沈阳': 'city', '大连': 'city', '长春': 'city', '哈尔滨': 'city', '合肥': 'city',
+        '南昌': 'city', '福州': 'city', '厦门': 'city', '泉州': 'city', '南宁': 'city',
+        '桂林': 'city', '海口': 'city', '三亚': 'city', '贵阳': 'city', '昆明': 'city',
+        '兰州': 'city', '西宁': 'city', '银川': 'city', '乌鲁木齐': 'city', '呼和浩特': 'city',
+        '太原': 'city', '石家庄': 'city', '唐山': 'city', '济南': 'city', '青岛': 'city', '烟台': 'city', '威海': 'city',
+        // 区县级地名
         '顺德': 'district', '南海': 'district', '禅城': 'district', '三水': 'district', '高明': 'district',
         '番禺': 'district', '花都': 'district', '增城': 'district', '从化': 'district', '南沙': 'district',
-        '黄埔': 'district', '天河': 'district', '越秀': 'district', '海珠': 'district', '荔湾': 'district',
-        '白云': 'district', '萝岗': 'district', '万江': 'district', '莞城': 'district', '南城': 'district',
-        '东城': 'district', '长安': 'district', '虎门': 'district', '厚街': 'district', '寮步': 'district',
-        '大岭山': 'district', '大朗': 'district', '黄江': 'district', '樟木头': 'district', '凤岗': 'district',
-        '塘厦': 'district', '清溪': 'district', '石碣': 'district', '石龙': 'district', '茶山': 'district',
-        '石排': 'district', '企石': 'district', '横沥': 'district', '桥头': 'district', '谢岗': 'district',
-        '东坑': 'district', '常平': 'district', '望牛墩': 'district', '麻涌': 'district', '道滘': 'district',
-        '洪梅': 'district', '沙田': 'district', '高埗': 'district', '石厦': 'district', '中堂': 'district',
-        '南朗': 'district', '小榄': 'district', '东凤': 'district', '东升': 'district', '古镇': 'district',
-        '坦洲': 'district', '三角': 'district', '南头': 'district', '神湾': 'district', '港口': 'district',
-        '沙溪': 'district', '霞山': 'district', '坡头': 'district', '赤坎': 'district', '麻章': 'district',
-        '遂溪': 'district', '徐闻': 'district', '廉江': 'district', '雷州': 'district', '吴川': 'district',
-        '电白': 'district', '化州': 'district', '信宜': 'district', '高州': 'district', '四会': 'district',
-        '高要': 'district', '封开': 'district', '广宁': 'district', '怀集': 'district', '德庆': 'district',
-        '新兴': 'district', '郁南': 'district', '罗定': 'district', '云安': 'district', '新丰': 'district',
-        '翁源': 'district', '英德': 'district', '连州': 'district', '佛冈': 'district', '阳山': 'district',
-        '清新': 'district', '连山': 'district', '连南': 'district', '乳源': 'district', '和平': 'district',
-        '龙川': 'district', '紫金': 'district', '龙门': 'district', '东源': 'district', '丰顺': 'district',
-        '五华': 'district', '兴宁': 'district', '平远': 'district', '蕉岭': 'district', '大埔': 'district',
-        '揭东': 'district', '揭西': 'district', '惠来': 'district', '普宁': 'district', '揭阳': 'district',
-        '惠东': 'district', '博罗': 'district', '惠阳': 'district', '龙门': 'district', '台山': 'district',
-        '新会': 'district', '开平': 'district', '鹤山': 'district', '恩平': 'district', '江海': 'district',
-        '蓬江': 'district', '新会': 'district', '台山': 'district', '开平': 'district', '鹤山': 'district',
-        '恩平': 'district', '南海': 'district', '顺德': 'district', '禅城': 'district', '高明': 'district',
-        '三水': 'district', '福田': 'district', '罗湖': 'district', '南山': 'district', '宝安': 'district',
-        '龙岗': 'district', '盐田': 'district', '光明': 'district', '坪山': 'district', '大鹏': 'district',
-        '龙华': 'district', '观澜': 'district', '光明': 'district', '公明': 'district', '松岗': 'district',
-        '石岩': 'district', '沙井': 'district', '坑梓': 'district', '坪地': 'district', '横岗': 'district',
-        '龙城': 'district', '南澳': 'district', '香洲': 'district', '斗门': 'district', '金湾': 'district',
-        '金唐': 'district', '南湾': 'district', '桂山': 'district', '拱北': 'district', '前山': 'district',
-        '香洲': 'district', '横琴': 'district', '万山': 'district', '高栏': 'district', '南屏': 'district',
-        '珠海': 'district', '斗门': 'district', '金湾': 'district',
-        // 江苏省区县
-        '江宁': 'district', '鼓楼': 'district', '玄武': 'district', '秦淮': 'district', '建邺': 'district',
-        '雨花台': 'district', '浦口': 'district', '栖霞': 'district', '六合': 'district', '溧水': 'district',
-        '高淳': 'district', '虎丘': 'district', '吴中': 'district', '相城': 'district', '姑苏': 'district',
-        '吴江': 'district', '常熟': 'district', '张家港': 'district', '昆山': 'district', '太仓': 'district',
-        '锡山': 'district', '惠山': 'district', '滨湖': 'district', '梁溪': 'district', '新吴': 'district',
-        '江阴': 'district', '宜兴': 'district', '天宁': 'district', '钟楼': 'district', '新北': 'district',
-        '武进': 'district', '金坛': 'district', '溧阳': 'district', '润州': 'district', '丹徒': 'district',
-        '扬中': 'district', '句容': 'district', '丹阳': 'district', '京口': 'district', '海陵': 'district',
-        '高港': 'district', '姜堰': 'district', '兴化': 'district', '靖江': 'district', '泰兴': 'district',
-        '海安': 'district', '如皋': 'district', '如东': 'district', '启东': 'district', '海门': 'district',
-        '通州': 'district', '崇川': 'district', '港闸': 'district', '开发区': 'district',
-        // 浙江省区县
-        '西湖': 'district', '拱墅': 'district', '上城': 'district', '下城': 'district', '江干': 'district',
-        '滨江': 'district', '萧山': 'district', '余杭': 'district', '临安': 'district', '富阳': 'district',
-        '桐庐': 'district', '淳安': 'district', '建德': 'district', '海曙': 'district', '江东': 'district',
-        '江北': 'district', '北仑': 'district', '镇海': 'district', '鄞州': 'district', '奉化': 'district',
-        '余姚': 'district', '慈溪': 'district', '宁海': 'district', '象山': 'district', '鹿城': 'district',
-        '龙湾': 'district', '瓯海': 'district', '洞头': 'district', '永嘉': 'district', '平阳': 'district',
-        '苍南': 'district', '文成': 'district', '泰顺': 'district', '瑞安': 'district', '乐清': 'district',
-        '南湖': 'district', '秀洲': 'district', '嘉善': 'district', '平湖': 'district', '海盐': 'district',
-        '海宁': 'district', '桐乡': 'district', '南浔': 'district', '德清': 'district', '长兴': 'district',
-        '安吉': 'district', '越城': 'district', '柯桥': 'district', '上虞': 'district', '新昌': 'district',
-        '诸暨': 'district', '嵊州': 'district', '绍兴': 'district', '袍江': 'district', '婺城': 'district',
-        '金东': 'district', '武义': 'district', '浦江': 'district', '磐安': 'district', '兰溪': 'district',
-        '义乌': 'district', '东阳': 'district', '永康': 'district', '江山': 'district', '开化': 'district',
-        '龙游': 'district', '常山': 'district', '衢江': 'district', '柯城': 'district', '椒江': 'district',
-        '黄岩': 'district', '路桥': 'district', '温岭': 'district', '玉环': 'district', '三门': 'district',
-        '天台': 'district', '仙居': 'district', '临海': 'district', '莲都': 'district', '青田': 'district',
-        '缙云': 'district', '遂昌': 'district', '松阳': 'district', '云和': 'district', '庆元': 'district',
-        '景宁': 'district', '龙泉': 'district', '吴兴': 'district', '南浔': 'district', '德清': 'district',
-        '长兴': 'district', '安吉': 'district',
-        // 镇级地名 (广东重点扩展)
+        '福田': 'district', '罗湖': 'district', '南山': 'district', '宝安': 'district', '龙岗': 'district',
+        '朝阳': 'district', '海淀': 'district', '浦东': 'district', '黄浦': 'district', '静安': 'district',
+        '西湖': 'district', '余杭': 'district', '萧山': 'district', '滨江': 'district', '吴中': 'district', '姑苏': 'district',
+        '江宁': 'district', '鼓楼': 'district', '玄武': 'district', '昆山': 'district', '常熟': 'district',
+        // 镇级地名
         '北滘': 'town', '乐从': 'town', '龙江': 'town', '杏坛': 'town', '均安': 'town',
         '陈村': 'town', '容桂': 'town', '伦教': 'town', '大良': 'town', '勒流': 'town',
-        '狮山': 'town', '大沥': 'town', '里水': 'town', '西樵': 'town', '丹灶': 'town',
-        '九江': 'town', '沙头': 'town', '官窑': 'town', '黄阁': 'town', '南庄': 'town',
-        '石湾': 'town', '张槎': 'town', '澜石': 'town', '南浦': 'town', '江浦': 'town',
-        '白坭': 'town', '东圃': 'town', '新造': 'town', '石楼': 'town', '新塘': 'town',
-        '黄埔': 'town', '长洲': 'town', '沙湾': 'town', '石牌': 'town', '员村': 'town',
-        '钟村': 'town', '石滩': 'town', '小塘': 'town', '正果': 'town', '大岗': 'town',
-        '永和': 'town', '东涌': 'town', '黄圃': 'town', '九佛': 'town', '沙头': 'town',
-        '横沥': 'town', '企石': 'town', '石排': 'town', '桥头': 'town', '谢岗': 'town',
-        '东坑': 'town', '常平': 'town', '望牛墩': 'town', '麻涌': 'town', '道滘': 'town',
-        '洪梅': 'town', '沙田': 'town', '高埗': 'town', '石厦': 'town', '中堂': 'town',
-        '南朗': 'town', '小榄': 'town', '东凤': 'town', '东升': 'town', '古镇': 'town',
-        '坦洲': 'town', '三角': 'town', '南头': 'town', '神湾': 'town', '港口': 'town',
-        '沙溪': 'town', '霞山': 'town', '坡头': 'town', '赤坎': 'town', '麻章': 'town',
-        '遂溪': 'town', '徐闻': 'town', '廉江': 'town', '雷州': 'town', '吴川': 'town',
-        '电白': 'town', '化州': 'town', '信宜': 'town', '高州': 'town', '四会': 'town',
-        '高要': 'town', '封开': 'town', '广宁': 'town', '怀集': 'town', '德庆': 'town',
-        '新兴': 'town', '郁南': 'town', '罗定': 'town', '云安': 'town', '新丰': 'town',
-        '翁源': 'town', '英德': 'town', '连州': 'town', '佛冈': 'town', '阳山': 'town',
-        '清新': 'town', '连山': 'town', '连南': 'town', '乳源': 'town', '和平': 'town',
-        '龙川': 'town', '紫金': 'town', '龙门': 'town', '东源': 'town', '丰顺': 'town',
-        '五华': 'town', '兴宁': 'town', '平远': 'town', '蕉岭': 'town', '大埔': 'town',
-        '揭东': 'town', '揭西': 'town', '惠来': 'town', '普宁': 'town', '惠东': 'town',
-        '博罗': 'town', '惠阳': 'town', '台山': 'town', '新会': 'town', '开平': 'town',
-        '鹤山': 'town', '恩平': 'town', '江海': 'town', '蓬江': 'town'
+        '狮山': 'town', '大沥': 'town', '里水': 'town', '西樵': 'town', '丹灶': 'town'
     };
     const PROVINCE_MAP = {
         '广东': 'province', '广西': 'province', '江苏': 'province', '浙江': 'province', '山东': 'province',
@@ -580,120 +480,50 @@
         '新疆': 'province', '西藏': 'province', '宁夏': 'province'
     };
 
-    // 计算分类置信度
-    function calculateClassificationConfidence(text, category) {
-        if (!text || category === 'uncategorized') return 0;
-        
-        let confidence = 0;
-        const lowerText = text.toLowerCase();
-        
-        // 基于匹配质量计算置信度
-        if (category === 'town') {
-            if (lowerText.includes('镇') || lowerText.includes('街道') || lowerText.includes('乡')) confidence += 40;
-            if (SMART_PLACE_MAP[text] === 'town') confidence += 30;
-        } else if (category === 'district') {
-            if (lowerText.includes('区') || lowerText.includes('县') || lowerText.includes('县级市')) confidence += 35;
-            if (SMART_PLACE_MAP[text] === 'district') confidence += 30;
-        } else if (category === 'city') {
-            if (lowerText.includes('市') || lowerText.includes('地级市')) confidence += 30;
-            if (SMART_PLACE_MAP[text] === 'city') confidence += 35;
-        } else if (category === 'province') {
-            if (lowerText.includes('省') || lowerText.includes('自治区')) confidence += 25;
-            if (PROVINCE_MAP[text] === 'province') confidence += 30;
-        }
-        
-        // 文本长度影响置信度
-        if (text.length > 50) confidence += 10;
-        else if (text.length > 20) confidence += 5;
-        
-        // 确保置信度在合理范围内
-        return Math.min(95, Math.max(10, confidence));
-    }
+    // 优先级权重分类
     function classifyByText(text) {
         if (!text || text.trim() === '') return 'uncategorized';
-        
-        let candidates = [];
+        let bestLevel = 'uncategorized';
+        let bestRank = 0;
         const rank = { town: 4, district: 3, city: 2, province: 1 };
         
-        // 1. 带后缀关键词 (最高精度，权重+2)
+        // 1. 带后缀关键词 (更高精度)
         const suffixes = {
-            town: ['镇', '街道', '乡', '苏木', '民族乡', '街道办事处', '镇政府', '乡政府'],
-            district: ['区', '地区', '县级市', '县', '自治县', '旗', '自治旗', '林区', '新区'],
-            city: ['市', '地级市', '州', '盟', '地区', '自治州', '直辖市'],
+            town: ['镇', '街道', '乡', '苏木', '民族乡', '街道办事处'],
+            district: ['区', '地区', '县级市'],
+            city: ['市', '地级市', '州', '盟'],
             province: ['省', '自治区', '直辖市', '特别行政区']
         };
-        
         for (let [level, keywords] of Object.entries(suffixes)) {
             for (let kw of keywords) {
-                if (text.includes(kw)) {
-                    // 查找关键词前后的地名
-                    const regex = new RegExp(`([^\\s]{1,10})${kw}`, 'g');
-                    let match;
-                    while ((match = regex.exec(text)) !== null) {
-                        const placeName = match[1];
-                        if (placeName.length >= 2) {
-                            candidates.push({
-                                name: placeName,
-                                level: level,
-                                confidence: 90 + (level === 'town' ? 10 : 0), // 镇级额外加分
-                                source: 'suffix'
-                            });
-                        }
-                    }
-                    
-                    // 如果没找到具体地名，但有后缀，也算一个弱候选
-                    if (candidates.length === 0) {
-                        candidates.push({
-                            name: kw,
-                            level: level,
-                            confidence: 70,
-                            source: 'suffix-only'
-                        });
-                    }
+                if (text.includes(kw) && rank[level] > bestRank) {
+                    bestRank = rank[level];
+                    bestLevel = level;
+                    if (bestLevel === 'town') return 'town';
                 }
             }
         }
         
-        // 2. 智能地名库 (精确匹配，权重+1)
+        // 2. 智能地名库 (无后缀也能识别)
         for (let [name, level] of Object.entries(SMART_PLACE_MAP)) {
-            if (text.includes(name)) {
-                candidates.push({
-                    name: name,
-                    level: level,
-                    confidence: 85,
-                    source: 'smart-map'
-                });
+            if (text.includes(name) && rank[level] > bestRank) {
+                bestRank = rank[level];
+                bestLevel = level;
+                if (bestLevel === 'town') return 'town';
             }
         }
         
-        // 3. 省份匹配 (兜底，权重正常)
+        // 3. 省份匹配
         for (let [name, level] of Object.entries(PROVINCE_MAP)) {
-            if (text.includes(name)) {
-                candidates.push({
-                    name: name,
-                    level: level,
-                    confidence: 60,
-                    source: 'province'
-                });
+            if (text.includes(name) && rank[level] > bestRank) {
+                bestRank = rank[level];
+                bestLevel = level;
             }
         }
-        
-        // 4. 选择最佳候选
-        if (candidates.length === 0) return 'uncategorized';
-        
-        // 按置信度排序，相同置信度按优先级排序
-        candidates.sort((a, b) => {
-            if (a.confidence !== b.confidence) return b.confidence - a.confidence;
-            return rank[b.level] - rank[a.level];
-        });
-        
-        const best = candidates[0];
-        console.log(`分类结果: ${best.name} -> ${best.level} (置信度:${best.confidence}, 来源:${best.source})`);
-        
-        return best.level;
+        return bestLevel;
     }
 
-    // ========== 高精度图像预处理 (保留彩色 + 智能对比度增强 + 轻度降噪) ==========
+    // ========== 高精度图像预处理 (自适应二值化+对比度增强) ==========
     async function enhanceImage(imgElement) {
         return new Promise((resolve) => {
             const canvas = document.createElement('canvas');
@@ -701,76 +531,29 @@
             canvas.width = imgElement.width;
             canvas.height = imgElement.height;
             ctx.drawImage(imgElement, 0, 0);
-
+            
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
-
-            // 1. 智能对比度增强 (保留彩色信息，避免花纹误识别)
+            
+            // 自适应对比度增强 + 轻微锐化
             for (let i = 0; i < data.length; i += 4) {
                 let r = data[i];
                 let g = data[i+1];
                 let b = data[i+2];
-
-                // 计算亮度
                 let brightness = (r + g + b) / 3;
-
-                // 自适应对比度增强 (基于亮度动态调整)
-                let factor;
-                if (brightness < 80) {
-                    // 暗部增强
-                    factor = 1.3;
-                } else if (brightness > 200) {
-                    // 亮部稍微压暗
-                    factor = 0.95;
-                } else {
-                    // 中间调适当增强
-                    factor = 1.05;
-                }
-
-                // 分别处理RGB通道，保持彩色信息
+                
+                // 动态对比度拉伸
+                let factor = brightness < 100 ? 0.75 : (brightness > 180 ? 1.3 : 1.0);
                 data[i] = Math.min(255, Math.max(0, r * factor));
                 data[i+1] = Math.min(255, Math.max(0, g * factor));
                 data[i+2] = Math.min(255, Math.max(0, b * factor));
             }
-
-            // 2. 轻度降噪 (只处理明显噪点，避免过度模糊文字)
-            const tempData = new Uint8Array(data);
-            for (let y = 1; y < canvas.height - 1; y++) {
-                for (let x = 1; x < canvas.width - 1; x++) {
-                    // 只对明显噪点进行处理
-                    const idx = (y * canvas.width + x) * 4;
-                    const neighbors = [];
-
-                    // 收集周围像素的亮度
-                    for (let dy = -1; dy <= 1; dy++) {
-                        for (let dx = -1; dx <= 1; dx++) {
-                            if (dx === 0 && dy === 0) continue;
-                            const nIdx = ((y + dy) * canvas.width + (x + dx)) * 4;
-                            const nBrightness = (tempData[nIdx] + tempData[nIdx+1] + tempData[nIdx+2]) / 3;
-                            neighbors.push(nBrightness);
-                        }
-                    }
-
-                    const currentBrightness = (tempData[idx] + tempData[idx+1] + tempData[idx+2]) / 3;
-                    const avgBrightness = neighbors.reduce((a, b) => a + b) / neighbors.length;
-
-                    // 如果当前像素与周围差异太大，认为是噪点
-                    if (Math.abs(currentBrightness - avgBrightness) > 60) {
-                        // 用周围平均值替换，但保持一定彩色信息
-                        const factor = 0.7; // 部分保留原色
-                        data[idx] = Math.round(data[idx] * factor + avgBrightness * (1 - factor));
-                        data[idx+1] = Math.round(data[idx+1] * factor + avgBrightness * (1 - factor));
-                        data[idx+2] = Math.round(data[idx+2] * factor + avgBrightness * (1 - factor));
-                    }
-                }
-            }
-
             ctx.putImageData(imageData, 0, 0);
             resolve(canvas.toDataURL('image/png'));
         });
     }
-    
-    // 多尺度OCR扫描 (全图 + 9个分层区域 + 局部放大 + 旋转校正)
+
+    // 多尺度OCR扫描 (全图 + 分层 + 局部放大区域)
     async function advancedOCR(imgElement) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -778,22 +561,18 @@
         canvas.height = imgElement.height;
         ctx.drawImage(imgElement, 0, 0);
         
-        // 定义9个扫描区域，覆盖整张图片所有可能包含文字的位置
+        // 定义7个扫描区域，覆盖整张图片所有可能包含文字的位置
         const regions = [
             { name: 'full', yStart: 0, yEnd: canvas.height, xStart: 0, xEnd: canvas.width, scale: 1 },
-            { name: 'top', yStart: 0, yEnd: canvas.height * 0.3, xStart: 0, xEnd: canvas.width, scale: 1.2 },
-            { name: 'upper-middle', yStart: canvas.height * 0.25, yEnd: canvas.height * 0.5, xStart: 0, xEnd: canvas.width, scale: 1.1 },
-            { name: 'middle', yStart: canvas.height * 0.4, yEnd: canvas.height * 0.7, xStart: 0, xEnd: canvas.width, scale: 1 },
-            { name: 'lower-middle', yStart: canvas.height * 0.6, yEnd: canvas.height * 0.85, xStart: 0, xEnd: canvas.width, scale: 1 },
-            { name: 'bottom', yStart: canvas.height * 0.75, yEnd: canvas.height, xStart: 0, xEnd: canvas.width, scale: 1.1 },
-            { name: 'center-focus', yStart: canvas.height * 0.35, yEnd: canvas.height * 0.75, xStart: canvas.width * 0.1, xEnd: canvas.width * 0.9, scale: 1.3 },
-            { name: 'left-bottom', yStart: canvas.height * 0.7, yEnd: canvas.height, xStart: 0, xEnd: canvas.width * 0.45, scale: 1.1 },
-            { name: 'right-bottom', yStart: canvas.height * 0.7, yEnd: canvas.height, xStart: canvas.width * 0.55, xEnd: canvas.width, scale: 1.1 }
+            { name: 'top', yStart: 0, yEnd: canvas.height * 0.35, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'middle', yStart: canvas.height * 0.3, yEnd: canvas.height * 0.7, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'bottom', yStart: canvas.height * 0.6, yEnd: canvas.height, xStart: 0, xEnd: canvas.width, scale: 1 },
+            { name: 'center', yStart: canvas.height * 0.4, yEnd: canvas.height * 0.8, xStart: canvas.width * 0.15, xEnd: canvas.width * 0.85, scale: 1.2 },
+            { name: 'leftBottom', yStart: canvas.height * 0.65, yEnd: canvas.height, xStart: 0, xEnd: canvas.width * 0.5, scale: 1 },
+            { name: 'rightBottom', yStart: canvas.height * 0.65, yEnd: canvas.height, xStart: canvas.width * 0.5, xEnd: canvas.width, scale: 1 }
         ];
         
         let allTexts = [];
-        let bestConfidence = 0;
-        let bestText = '';
         
         for (let region of regions) {
             const regionCanvas = document.createElement('canvas');
@@ -803,55 +582,39 @@
             
             // 放大处理 (提升小字识别率)
             if (region.scale && region.scale > 1) {
-                regionCanvas.width = Math.max(150, width * region.scale);
-                regionCanvas.height = Math.max(75, height * region.scale);
+                regionCanvas.width = Math.max(100, width * region.scale);
+                regionCanvas.height = Math.max(50, height * region.scale);
                 regionCtx.drawImage(canvas, region.xStart, region.yStart, width, height, 0, 0, regionCanvas.width, regionCanvas.height);
             } else {
-                regionCanvas.width = Math.max(150, width);
-                regionCanvas.height = Math.max(75, height);
+                regionCanvas.width = Math.max(100, width);
+                regionCanvas.height = Math.max(50, height);
                 regionCtx.drawImage(canvas, region.xStart, region.yStart, width, height, 0, 0, regionCanvas.width, regionCanvas.height);
             }
             
             try {
-                // 使用适合彩色图像的识别参数
+                // 使用更精确的识别模式
                 const result = await Tesseract.recognize(regionCanvas, 'chi_sim+eng', {
                     logger: () => {},
-                    tessedit_pageseg_mode: 3,  // 自动页面分割，更适合彩色图像
-                    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz省市区域镇街道县自治州盟区广东江苏浙江北京上海天津重庆广州深圳佛山顺德南海禅城三水高明增城从化花都番禺南沙黄埔天河越秀海珠荔湾白云东莞中山珠海惠州江门肇庆汕头潮州揭阳汕尾湛江茂名阳江韶关清远云浮梅州河源肇庆四会高要封开广宁怀集德庆',
-                    tessedit_ocr_engine_mode: 2,  // 使用Tesseract + LSTM引擎
-                    tessedit_enable_bigram_correction: 1,  // 启用双字母修正
-                    classify_enable_learning: 1  // 启用学习模式
+                    tessedit_pageseg_mode: 6,  // 统一文本块
+                    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz省市区域镇街道县自治州盟区广东江苏浙江北京上海天津重庆广州深圳佛山顺德南海'
                 });
-                
                 const text = result.data.text.trim();
-                const confidence = result.data.confidence || 0;
-                
                 if (text && text.length > 0) {
                     allTexts.push(text);
-                    // 记录最高置信度的结果
-                    if (confidence > bestConfidence) {
-                        bestConfidence = confidence;
-                        bestText = text;
-                    }
                 }
             } catch (e) {
                 console.warn(`区域 ${region.name} OCR失败:`, e);
             }
         }
         
-        // 合并去重所有识别结果
+        // 合并去重
         let combined = allTexts.join(' ');
         combined = combined.replace(/\s+/g, ' ').trim();
         
-        // 如果识别内容过少或置信度低，尝试用原始图像全图再识别一次 (降级方案)
-        if (combined.length < 15 || bestConfidence < 60) {
+        // 如果识别内容过少，尝试用原始图像全图再识别一次 (降级方案)
+        if (combined.length < 10) {
             try {
-                console.log('置信度较低，尝试全图降级识别...');
-                const fallbackResult = await Tesseract.recognize(canvas, 'chi_sim+eng', { 
-                    logger: () => {},
-                    tessedit_pageseg_mode: 3,  // 自动页面分割
-                    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz省市区域镇街道县自治州盟区广东江苏浙江北京上海天津重庆广州深圳佛山顺德南海禅城三水高明增城从化花都番禺南沙黄埔天河越秀海珠荔湾白云东莞中山珠海惠州江门肇庆汕头潮州揭阳汕尾湛江茂名阳江韶关清远云浮梅州河源肇庆四会高要封开广宁怀集德庆'
-                });
+                const fallbackResult = await Tesseract.recognize(canvas, 'chi_sim+eng', { logger: () => {} });
                 if (fallbackResult.data.text && fallbackResult.data.text.length > combined.length) {
                     combined = fallbackResult.data.text.replace(/\s+/g, ' ').trim();
                 }
@@ -887,7 +650,6 @@
             
             item.textDetected = recognizedText || "";
             item.category = classifyByText(recognizedText);
-            item.confidence = calculateClassificationConfidence(recognizedText, item.category);
             item.status = 'done';
             
             console.log(`✅ ${item.fileName} | 文字长度:${recognizedText.length} | 分类:${CATEGORY_MAP[item.category]}`);
@@ -1105,7 +867,6 @@
                     <div class="filename">📄 ${item.fileName}</div>
                     <div class="detected-cat">
                         🏷️ 分类: <span class="category-tag" style="background:${colors[catName]}">${catName}</span>
-                        ${item.confidence ? `<span style="margin-left:8px; font-size:0.7rem; color:#666;">置信度:${item.confidence}%</span>` : ''}
                         ${item.status !== 'done' ? `<span style="margin-left:8px;">${statusMap[item.status]}</span>` : ''}
                     </div>
                     ${item.textDetected && item.status === 'done' ? 
