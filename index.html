@@ -142,16 +142,67 @@
             margin-top: 20px;
             color: #2e7d32;
         }
-        .accuracy-note h3 {
+        .api-config {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            text-align: left;
+        }
+        .api-config h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .api-input {
+            display: flex;
+            gap: 10px;
             margin-bottom: 10px;
-            color: #1b5e20;
+            align-items: center;
+        }
+        .api-input label {
+            min-width: 80px;
+            font-weight: 500;
+        }
+        .api-input input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .api-note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎯 高精度OCR识别器</h1>
-        <p class="subtitle">基于PaddlePaddle PP-OCRv4 - 业界领先的中文OCR技术</p>
+        <p class="subtitle">基于百度智能云OCR API - 无需下载模型，纯云端处理</p>
+
+        <div class="api-config">
+            <h3>🔑 API配置</h3>
+            <div class="api-input">
+                <label>AppID:</label>
+                <input type="text" id="appId" placeholder="输入百度智能云AppID">
+            </div>
+            <div class="api-input">
+                <label>API Key:</label>
+                <input type="text" id="apiKey" placeholder="输入百度智能云API Key">
+            </div>
+            <div class="api-input">
+                <label>Secret Key:</label>
+                <input type="text" id="secretKey" placeholder="输入百度智能云Secret Key">
+            </div>
+            <div class="api-note">
+                📝 如何获取API密钥：<br>
+                1. 访问 <a href="https://ai.baidu.com/" target="_blank">百度智能云</a> 注册账号<br>
+                2. 创建文字识别应用，获取AppID、API Key、Secret Key<br>
+                3. 免费额度：每月50000次调用
+            </div>
+        </div>
 
         <div class="upload-area" id="uploadArea">
             <div class="upload-icon">📷</div>
@@ -163,10 +214,7 @@
             <canvas id="imageCanvas"></canvas>
         </div>
 
-        <div class="loading" id="loading">正在加载模型，请稍候...</div>
-        <div class="progress" id="progress">
-            <div class="progress-bar" id="progressBar"></div>
-        </div>
+        <div class="loading" id="loading">正在识别中，请稍候...</div>
 
         <button class="btn" id="recognizeBtn" disabled>开始识别</button>
 
@@ -177,81 +225,84 @@
 
         <div class="accuracy-note">
             <h3>💯 高准确率保证</h3>
-            <p>使用PP-OCRv4模型，经过百万级数据训练，中文识别准确率高达98%以上。支持中英文混合、多行文本、复杂背景等场景。</p>
+            <p>使用百度智能云OCR API，基于深度学习技术，中文识别准确率高达99%。支持多种场景：通用文字、身份证、银行卡、营业执照等。</p>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@paddlejs/paddlejs-core@2.1.0/dist/index.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@paddlejs/paddlejs-backend-webgl@2.1.0/dist/index.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@paddlejs/ocr-det@2.1.0/dist/index.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@paddlejs/ocr-rec@2.1.0/dist/index.min.js"></script>
     <script>
-        let ocr = null;
-        let imageData = null;
+        // 百度OCR API配置
+        const API_CONFIG = {
+            tokenUrl: 'https://aip.baidubce.com/oauth/2.0/token',
+            ocrUrl: 'https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic'
+        };
 
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const imageCanvas = document.getElementById('imageCanvas');
-        const recognizeBtn = document.getElementById('recognizeBtn');
-        const resultText = document.getElementById('resultText');
-        const loading = document.getElementById('loading');
-        const progress = document.getElementById('progress');
-        const progressBar = document.getElementById('progressBar');
-        const imagePreview = document.querySelector('.image-preview');
+        let accessToken = null;
+        let currentImageBase64 = null;
 
-        // 初始化OCR
-        async function initOCR() {
-            loading.style.display = 'block';
-            progress.style.display = 'block';
+        // 获取访问令牌
+        async function getAccessToken() {
+            const appId = document.getElementById('appId').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const secretKey = document.getElementById('secretKey').value.trim();
 
-            try {
-                // 初始化检测模型
-                const det = new Paddlejs.OcrDet({
-                    url: './models/ch_PP-OCRv4_det_infer/inference.pdmodel',
-                    paramUrl: './models/ch_PP-OCRv4_det_infer/inference.pdiparams'
-                });
-
-                // 初始化识别模型
-                const rec = new Paddlejs.OcrRec({
-                    url: './models/ch_PP-OCRv4_rec_infer/inference.pdmodel',
-                    paramUrl: './models/ch_PP-OCRv4_rec_infer/inference.pdiparams'
-                });
-
-                // 创建OCR实例
-                ocr = new Paddlejs.Ocr(det, rec);
-
-                progressBar.style.width = '100%';
-                loading.textContent = '模型加载完成！';
-                setTimeout(() => {
-                    loading.style.display = 'none';
-                    progress.style.display = 'none';
-                }, 1000);
-
-            } catch (error) {
-                console.error('模型加载失败:', error);
-                loading.textContent = '模型加载失败，请检查网络连接或模型文件路径';
-                loading.style.color = 'red';
+            if (!appId || !apiKey || !secretKey) {
+                throw new Error('请填写完整的API配置信息');
             }
+
+            const response = await fetch(`${API_CONFIG.tokenUrl}?grant_type=client_credentials&client_id=${apiKey}&client_secret=${secretKey}`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                throw new Error(`获取访问令牌失败: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(`API错误: ${data.error_description}`);
+            }
+
+            accessToken = data.access_token;
+            return accessToken;
         }
 
-        // 上传文件处理
-        uploadArea.addEventListener('click', () => fileInput.click());
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) handleFile(files[0]);
-        });
+        // OCR识别
+        async function recognizeOCR(imageBase64) {
+            if (!accessToken) {
+                await getAccessToken();
+            }
 
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) handleFile(e.target.files[0]);
-        });
+            const response = await fetch(API_CONFIG.ocrUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams({
+                    access_token: accessToken,
+                    image: imageBase64,
+                    detect_direction: 'true',
+                    probability: 'true'
+                })
+            });
 
+            if (!response.ok) {
+                if (response.status === 401) {
+                    // 令牌过期，重新获取
+                    accessToken = null;
+                    return await recognizeOCR(imageBase64);
+                }
+                throw new Error(`OCR识别失败: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.error_code) {
+                throw new Error(`OCR API错误: ${data.error_msg}`);
+            }
+
+            return data;
+        }
+
+        // 处理文件上传
         function handleFile(file) {
             if (!file.type.startsWith('image/')) {
                 alert('请选择图片文件');
@@ -262,57 +313,82 @@
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
-                    const canvas = imageCanvas;
+                    const canvas = document.getElementById('imageCanvas');
                     const ctx = canvas.getContext('2d');
                     canvas.width = img.width;
                     canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    imagePreview.style.display = 'block';
-                    recognizeBtn.disabled = false;
-                    resultText.value = '';
+                    document.querySelector('.image-preview').style.display = 'block';
+                    document.getElementById('recognizeBtn').disabled = false;
+                    document.getElementById('resultText').value = '';
+
+                    // 转换为base64（去掉data:image/...;base64,前缀）
+                    currentImageBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
                 };
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         }
 
-        // OCR识别
-        recognizeBtn.addEventListener('click', async () => {
-            if (!imageData || !ocr) return;
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            const recognizeBtn = document.getElementById('recognizeBtn');
+            const resultText = document.getElementById('resultText');
+            const loading = document.getElementById('loading');
 
-            recognizeBtn.disabled = true;
-            recognizeBtn.textContent = '识别中...';
-            resultText.value = '正在进行文字检测和识别，请稍候...';
+            // 上传区域事件
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) handleFile(files[0]);
+            });
 
-            try {
-                // 运行OCR
-                const result = await ocr.predict(imageData);
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) handleFile(e.target.files[0]);
+            });
 
-                // 处理结果
-                let finalText = '';
-                if (result && result.text) {
-                    finalText = result.text;
-                } else if (result && Array.isArray(result)) {
-                    finalText = result.map(item => item.text || '').join('\n');
-                } else {
-                    finalText = '识别完成，但结果格式未知。\n调试信息: ' + JSON.stringify(result, null, 2);
+            // 识别按钮事件
+            recognizeBtn.addEventListener('click', async () => {
+                if (!currentImageBase64) return;
+
+                recognizeBtn.disabled = true;
+                recognizeBtn.textContent = '识别中...';
+                loading.style.display = 'block';
+                resultText.value = '正在连接百度OCR API，请稍候...';
+
+                try {
+                    const result = await recognizeOCR(currentImageBase64);
+
+                    let finalText = '';
+                    if (result.words_result && result.words_result.length > 0) {
+                        finalText = result.words_result.map(item => item.words).join('\n');
+                    } else {
+                        finalText = '未识别到文字，请检查图片质量或内容';
+                    }
+
+                    resultText.value = finalText;
+                    loading.style.display = 'none';
+                    recognizeBtn.textContent = '重新识别';
+                    recognizeBtn.disabled = false;
+
+                } catch (error) {
+                    console.error('OCR识别失败:', error);
+                    resultText.value = `识别失败: ${error.message}\n\n请检查：\n1. API密钥是否正确\n2. 网络连接是否正常\n3. 是否超出免费额度`;
+                    loading.style.display = 'none';
+                    recognizeBtn.textContent = '开始识别';
+                    recognizeBtn.disabled = false;
                 }
-
-                resultText.value = finalText;
-                recognizeBtn.textContent = '重新识别';
-                recognizeBtn.disabled = false;
-
-            } catch (error) {
-                console.error('OCR识别失败:', error);
-                resultText.value = '识别失败，请重试或检查图片质量\n错误信息: ' + error.message;
-                recognizeBtn.textContent = '开始识别';
-                recognizeBtn.disabled = false;
-            }
+            });
         });
-
-        // 初始化
-        initOCR();
     </script>
 </body>
 </html>
